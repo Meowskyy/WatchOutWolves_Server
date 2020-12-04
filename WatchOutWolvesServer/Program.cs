@@ -25,6 +25,9 @@ public interface IGamingHubReceiver
     void OnJump(PlayerData player, Vector3 force, float jumpStartSpeed);
     void OnCrouch(PlayerData player, bool isCrouching);
     void OnAbilityUsed(PlayerData player, int abilityID);
+    void OnPlayerHit(PlayerData player, Vector3 direction);
+    void OnPlayerDeath(PlayerData player);
+    void OnPlayerWantMonsterChange(PlayerData player, bool value);
 }
 
 // Definition of client-to-server communication
@@ -39,6 +42,14 @@ public interface IGamingHub : IStreamingHub<IGamingHub, IGamingHubReceiver>
     Task JumpAsync(Vector3 force, float jumpStartSpeed);
     Task CrouchAsync(bool isCrouching);
     Task UseAbilityAsync(int abilityID);
+    Task HitPlayerAsync(PlayerData player, Vector3 direction);
+    Task ToggleMonsterAsync(bool value);
+}
+
+public class RoomSettings
+{
+    public string hostName;
+
 }
 
 // Custom object to be used for both sending and receiving communication
@@ -48,12 +59,13 @@ public class PlayerData
     [Key(0)]
     public string Name { get; set; }
     [Key(1)]
-    public string Uuid { get; set; }
+    public Guid Uuid { get; set; }
     [Key(2)]
     public Vector3 Position { get; set; }
-
-    [IgnoreMember]
-    public bool isHost;
+    [Key(3)]
+    public bool IsHost { get; set; }
+    [Key(4)]
+    public bool WantsMonster { get; set; } // Does the player want to be a monster?
 }
 
 //Server implementation
@@ -65,17 +77,18 @@ public class GamingHub : StreamingHubBase<IGamingHub, IGamingHubReceiver>, IGami
 
     public async Task<PlayerData[]> JoinAsync(string roomName, string userName)
     {
-        //Console.WriteLine(userName + " / " + uuid + " connected! isHost = " + isUserHost);
-
-        self = new PlayerData() { Name = userName };
+        self = new PlayerData() { 
+            Name = userName,
+            Uuid = Context.ContextId
+        };
 
         (room, storage) = await Group.AddAsync(roomName, self);
 
         PlayerData[] connectedPlayers = storage.AllValues.ToArray();
 
         bool isUserHost = (connectedPlayers.Length == 1);
-        self.isHost = isUserHost;
-        Console.WriteLine(userName + " connected! isHost = " + isUserHost);
+        self.IsHost = isUserHost;
+        Console.WriteLine(userName + " / " + self.Uuid + " connected to + " + roomName + "! isHost = " + isUserHost);
 
         BroadcastToSelf(room).OnReceiveLobbyInfo(connectedPlayers);
         Broadcast(room).OnJoin(self);
@@ -86,6 +99,11 @@ public class GamingHub : StreamingHubBase<IGamingHub, IGamingHubReceiver>, IGami
     public async Task LeaveAsync()
     {
         Console.WriteLine(self.Name + " disconnected!");
+
+        if (self.IsHost)
+        {
+            // TODO: Change host on leave
+        }
 
         await room.RemoveAsync(this.Context);
         Broadcast(room).OnLeave(self);
@@ -129,18 +147,40 @@ public class GamingHub : StreamingHubBase<IGamingHub, IGamingHubReceiver>, IGami
 
     public async Task StartGameAsync(uint seed, Vector2Int worldSize)
     {
-        if (self.isHost)
+        if (self.IsHost)
         {
             Console.WriteLine(self.Name + " started game");
             Console.WriteLine(string.Format("{0} / {1}", seed, worldSize));
+            Console.WriteLine("Players: " + storage.AllValues.Count);
+
+            PlayerData[] players = storage.AllValues.ToArray();
+            for (int i = 0; i < players.Length; i++)
+            {
+
+            }
+
             Broadcast(room).OnGameStart(seed, worldSize);
         }
         else
         {
             Console.WriteLine(self.Name + " has been kicked");
-            storage.Remove(this.Context.ContextId);
-            await room.RemoveAsync(this.Context);
+            storage.Remove(Context.ContextId);
+            await room.RemoveAsync(Context);
         }
+    }
+
+    public async Task HitPlayerAsync(PlayerData player, Vector3 direction)
+    {
+        Console.WriteLine(player.Name + " has been hit!");
+        Broadcast(room).OnPlayerHit(player, direction);
+    }
+
+    public async Task ToggleMonsterAsync(bool value)
+    {
+        PlayerData host = storage.AllValues.First();
+        self.WantsMonster = value;
+        Console.WriteLine("Host: " + host.Name + " & " + self.Name + " wants to be monster: " + value);
+        BroadcastTo(room, host.Uuid).OnPlayerWantMonsterChange(self, value);
     }
 }
 
