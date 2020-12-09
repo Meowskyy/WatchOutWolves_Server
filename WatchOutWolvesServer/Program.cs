@@ -9,7 +9,6 @@ using MagicOnion.Server.Hubs;
 using MessagePack;
 using Microsoft.Extensions.Hosting;
 using UnityEngine;
-//using MySql.Data.MySqlClient;
 
 // Definition of server-to-client communication
 public interface IGamingHubReceiver
@@ -189,17 +188,6 @@ class Program
 {
     public static string serverAddress = "192.168.1.100";
     public static int serverPort = 3000;
-
-    /*
-    static readonly MySqlConnectionStringBuilder builder = new MySqlConnectionStringBuilder
-    {
-        Server = "192.168.1.100",
-        Database = "fishing",
-        UserID = "root",
-        Password = "",
-        SslMode = MySqlSslMode.None
-    };
-    */
 
     static async Task Main(string[] args)
     {
